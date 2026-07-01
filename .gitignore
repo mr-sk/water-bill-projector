@@ -1,0 +1,12 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# pulled meter data (your real usage / meter id)
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
