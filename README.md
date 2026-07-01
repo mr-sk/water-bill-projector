@@ -193,3 +193,4 @@ agent/cron setup.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+A product of [sk @ skheavyindustries.com](https://skheavyindustries.com)
