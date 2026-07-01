@@ -192,38 +192,46 @@ flags = []
 expected_sprinkler_today = today.weekday() in SPRINKLER_DAYS
 
 if today_total > TODAY_VS_AVG_MULTIPLIER * seven_day_avg and seven_day_avg > 0:
-    flags.append(f"Today's {today_total:.0f} gal is {today_total/seven_day_avg:.1f}× the 7-day avg of {seven_day_avg:.0f}.")
+    flags.append(f"Today's {today_total:.0f} gal is {today_total/seven_day_avg:.1f}x the 7-day avg of {seven_day_avg:.0f}.")
 
-# Big morning spike on a non-sprinkler day
+# Big unexpected morning draw (possible leak) on a day nothing is scheduled.
+# With no sprinkler schedule set, this runs every day as a plain leak check.
 if not expected_sprinkler_today:
+    tag = " on a non-watering day" if SPRINKLER_DAYS else ""
     for dt, g in hourly:
         if dt.date() == today and 4 <= dt.hour < 7 and g > NON_SPRINKLER_MORNING_SPIKE_GAL:
-            flags.append(f"Morning spike {g:.0f} gal at {dt.hour:02d}:00 on a non-sprinkler day (could be leak, pool fill, or manual irrigation).")
+            flags.append(f"Morning spike {g:.0f} gal at {dt.hour:02d}:00{tag} (could be a leak, pool fill, or manual watering).")
             break
 
-# Sprinkler day but window had almost no usage
+# Watering day but the window had almost no usage (only if a schedule is set)
 if expected_sprinkler_today and now.hour >= 6 and today_sprinkler_gal < SPRINKLER_DAY_MIN_GAL:
-    flags.append(f"M/W/F sprinkler day but only {today_sprinkler_gal:.0f} gal during 4:30-5:30 window — system may have failed to run.")
+    win = f"{SPRINKLER_START.strftime('%-H:%M')}-{SPRINKLER_END.strftime('%-H:%M')}"
+    flags.append(f"Watering day but only {today_sprinkler_gal:.0f} gal during the {win} window; system may have failed to run.")
 
 # ── Output ────────────────────────────────────────────────────────────
 out = []
-out.append(f"💧 Water Report — {today.strftime('%a %b %d, %Y')} (as of {now.strftime('%H:%M %Z')})")
+out.append(f"Water Report - {today.strftime('%a %b %d, %Y')} (as of {now.strftime('%H:%M %Z')})")
 out.append("")
 out.append(f"Today:       {today_total:6.1f} gal   ~${today_cost:.2f}")
 out.append(f"Yesterday:   {yest_total:6.1f} gal   ~${yest_cost:.2f}")
 out.append(f"7-day avg:   {seven_day_avg:6.1f} gal/day")
 out.append("")
-sched_label = f"scheduled M/W/F {SPRINKLER_START.strftime('%-H:%M')}-{SPRINKLER_END.strftime('%-H:%M')} AM"
-out.append(f"Sprinklers today: {today_sprinkler_gal:.1f} gal "
-           f"({sched_label if expected_sprinkler_today else 'not a sprinkler day'})")
-out.append("")
+# Only show the sprinkler line if a watering schedule is configured.
+if SPRINKLER_DAYS:
+    _names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    days_label = "/".join(_names[d] for d in sorted(SPRINKLER_DAYS))
+    window = f"{SPRINKLER_START.strftime('%-H:%M')}-{SPRINKLER_END.strftime('%-H:%M')}"
+    sched_label = f"scheduled {days_label} {window}"
+    out.append(f"Sprinklers today: {today_sprinkler_gal:.1f} gal "
+               f"({sched_label if expected_sprinkler_today else 'not a watering day'})")
+    out.append("")
 out.append("By period today:")
 out.append(f"  Overnight (00-05): {periods['overnight']:6.1f} gal")
 out.append(f"  Morning   (05-12): {periods['morning']:6.1f} gal")
 out.append(f"  Afternoon (12-18): {periods['afternoon']:6.1f} gal")
 out.append(f"  Evening   (18-24): {periods['evening']:6.1f} gal")
 out.append("")
-cycle_label = f"{cycle_start.strftime('%-m/%-d')}–{cycle_end.strftime('%-m/%-d')}"
+cycle_label = f"{cycle_start.strftime('%-m/%-d')}-{cycle_end.strftime('%-m/%-d')}"
 # Confidence band: ±10% of remaining-days extrapolation (early in cycle = wider).
 # Tightens as cycle_day_of grows.
 remaining_unknown_gal = avg_daily_so_far * days_remaining_in_cycle
@@ -233,18 +241,18 @@ proj_high_gal = projected_cycle_gal + band_gal
 proj_low_bill  = SERVICE_CHARGE + cost_for_usage(gal_to_cgl(proj_low_gal),  0)
 proj_high_bill = SERVICE_CHARGE + cost_for_usage(gal_to_cgl(proj_high_gal), 0)
 
-out.append(f"🎯 PROJECTED FULL-CYCLE BILL: ~${projected_bill:.2f}  (range ${proj_low_bill:.2f}–${proj_high_bill:.2f})")
+out.append(f"PROJECTED FULL-CYCLE BILL: ~${projected_bill:.2f}  (range ${proj_low_bill:.2f}-${proj_high_bill:.2f})")
 out.append(f"   {projected_cycle_gal:.0f} gal projected total, cycle ends {cycle_end.strftime('%a %-m/%-d')}")
 out.append("")
 out.append(f"Billing cycle {cycle_label} (day {cycle_day_of} of {cycle_days_total}):")
 out.append(f"  Cycle-to-date: {bcd_total:.0f} gal "
-           f"({gal_to_cgl(bcd_total):.1f} CGL, in tier {tier_now}) — "
+           f"({gal_to_cgl(bcd_total):.1f} CGL, in tier {tier_now}) - "
            f"~${bcd_usage_cost:.2f} usage + ${SERVICE_CHARGE:.2f} service = ${bcd_usage_cost + SERVICE_CHARGE:.2f}")
 out.append("")
 if flags:
-    out.append("⚠ Flags:")
+    out.append("Flags:")
     for fl in flags:
-        out.append(f"  • {fl}")
+        out.append(f"  - {fl}")
 else:
     out.append("No anomalies flagged.")
 
