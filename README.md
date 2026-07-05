@@ -190,6 +190,20 @@ short summary to Discord each night. That part is optional. The scripts above ru
 fine from plain `cron`. See [`docs/openclaw-cron.md`](docs/openclaw-cron.md) for the
 agent/cron setup.
 
+## Tests
+
+The billing and aggregation math lives in `billing.py` as pure functions, with
+tests in `tests/`. They use only the standard library, so no install is needed:
+
+```bash
+python3 tests/test_billing.py
+# or: python3 -m unittest discover -s tests
+```
+
+They cover the marginal tier pricing, billing-cycle boundaries (including fixed
+cycle days like the 31st in short months), duplicate-hour aggregation, and
+pricing a day within its own billing cycle.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
