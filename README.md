@@ -17,8 +17,10 @@ utility on the Eye on Water platform (e.g. Liberty Utilities).
 | File | Purpose |
 |------|---------|
 | `pull_usage.py` | Authenticates to Eye on Water and pulls ~90 days of hourly readings into `data/` (CSV + JSON). |
-| `water-report.py` | Turns the readings into a daily report: tiered cost, projected bill + range, sprinkler detection, anomaly flags. |
+| `water-report.py` | Turns the readings into a daily report: tiered cost, projected bill + range, sprinkler detection, anomaly flags. Holds the config block. |
+| `billing.py` | Pure, unit-tested billing + aggregation math (tier pricing, cycle bounds, per-day cost) that `water-report.py` builds on. |
 | `water-report.sh` | Convenience wrapper: refresh the data, then print the report. |
+| `tests/` | Standard-library `unittest` tests for `billing.py` (no install needed). |
 | `docs/openclaw-cron.md` | How to run it nightly and post the summary to Discord via an [OpenClaw](https://github.com/openclaw/openclaw) agent (optional). |
 
 ## Setup
