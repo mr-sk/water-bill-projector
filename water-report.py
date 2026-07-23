@@ -31,18 +31,24 @@ else:
 # EDIT THESE FOR YOUR UTILITY.
 # Tiered monthly rates, $/CGL where CGL = 100 gallons. Tiers are cumulative
 # monthly thresholds: (upper_bound_CGL, rate_for_usage_within_this_tier).
-# The values below are an example schedule — replace with your own from your bill.
+# Liberty Utilities (Sea Cliff / Long Island) schedule per NY PSC Case 23-W-0235,
+# in effect since 2024-09-01. Confirmed against bill dated 2026-07-21.
 RATE_TIERS = [
-    (10,             0.7118),  # first 10 CGL  (0–1,000 gal)
-    (30,             0.7472),  # next 20 CGL   (1,000–3,000 gal)
-    (36,             0.9690),  # next 6  CGL   (3,000–3,600 gal)
-    (float("inf"),   1.0172),  # 36+ CGL       (3,600+ gal)
+    (30,             0.7472),  # first 30 CGL  (0-3,000 gal)
+    (60,             1.0172),  # next 30 CGL   (3,000-6,000 gal)
+    (150,            1.4604),  # next 90 CGL   (6,000-15,000 gal)
+    (float("inf"),   1.9305),  # 150+ CGL      (15,000+ gal)
 ]
-SERVICE_CHARGE = 18.83  # flat per month
+SERVICE_CHARGE = 19.00  # flat per month, 3/4" meter size
+
+# Additional monthly surcharges Liberty adds on top of usage + service.
+LEVELIZATION_FLAT = 21.60             # flat $ per month (Case 23-W-0235 recovery)
+RACPTR_PCT        = 0.0179            # % of (water usage + service charge)
+LSL_RATE          = 0.0007            # $/CGL, Lead Service Line surcharge
 
 # Billing cycle. Many utilities bill on a fixed day-of-month, not the 1st.
-# Days 29–31 that don't exist in every month are clamped to the month's last day.
-BILLING_CYCLE_START_DAY = 21          # cycle runs the 21st -> 21st
+# Days 29-31 that don't exist in every month are clamped to the month's last day.
+BILLING_CYCLE_START_DAY = 18          # cycle runs the 18th -> 18th
 
 # Sprinkler schedule. Set the days you water and the window to watch. Tip: read
 # your actual hourly deltas first — a controller's clock is often not what you
@@ -125,9 +131,22 @@ projected_cycle_gal = bcd_total + avg_daily_so_far * days_remaining_in_cycle
 # day-before at a cycle boundary is charged against the right cumulative tier.
 today_cost     = billing.cost_for_day(today, daily_total, RATE_TIERS, BILLING_CYCLE_START_DAY)
 yest_cost      = billing.cost_for_day(yest, daily_total, RATE_TIERS, BILLING_CYCLE_START_DAY)
-bcd_usage_cost = billing.cost_for_usage(billing.gal_to_cgl(bcd_total), 0, RATE_TIERS)
-projected_usage_cost = billing.cost_for_usage(billing.gal_to_cgl(projected_cycle_gal), 0, RATE_TIERS)
-projected_bill = SERVICE_CHARGE + projected_usage_cost
+
+def full_bill(gal):
+    """Total $ bill for `gal` gallons in a cycle, including all surcharges.
+
+    Returns (usage_cost, water_total, surcharge_total, grand_total). RAC/PTR
+    is a % of water charges (usage + service) per the tariff, so surcharges
+    are computed off water_total, not the grand total.
+    """
+    cgl = billing.gal_to_cgl(gal)
+    usage_cost = billing.cost_for_usage(cgl, 0, RATE_TIERS)
+    water_total = usage_cost + SERVICE_CHARGE
+    surcharges = LEVELIZATION_FLAT + water_total * RACPTR_PCT + cgl * LSL_RATE
+    return usage_cost, water_total, surcharges, water_total + surcharges
+
+bcd_usage_cost, bcd_water_total, bcd_surcharges, bcd_grand = full_bill(bcd_total)
+_, _, _, projected_bill = full_bill(projected_cycle_gal)
 tier_now = billing.current_tier(billing.gal_to_cgl(bcd_total), RATE_TIERS)
 
 # ── By-period breakdown today (overnight/morning/afternoon/evening) ──
@@ -190,16 +209,19 @@ remaining_unknown_gal = avg_daily_so_far * days_remaining_in_cycle
 band_gal = remaining_unknown_gal * 0.20  # ±20% on the extrapolated portion
 proj_low_gal  = max(bcd_total, projected_cycle_gal - band_gal)
 proj_high_gal = projected_cycle_gal + band_gal
-proj_low_bill  = SERVICE_CHARGE + billing.cost_for_usage(billing.gal_to_cgl(proj_low_gal),  0, RATE_TIERS)
-proj_high_bill = SERVICE_CHARGE + billing.cost_for_usage(billing.gal_to_cgl(proj_high_gal), 0, RATE_TIERS)
+_, _, _, proj_low_bill  = full_bill(proj_low_gal)
+_, _, _, proj_high_bill = full_bill(proj_high_gal)
 
 out.append(f"PROJECTED FULL-CYCLE BILL: ~${projected_bill:.2f}  (range ${proj_low_bill:.2f}-${proj_high_bill:.2f})")
 out.append(f"   {projected_cycle_gal:.0f} gal projected total, cycle ends {cycle_end.strftime('%a %-m/%-d')}")
 out.append("")
 out.append(f"Billing cycle {cycle_label} (day {cycle_day_of} of {cycle_days_total}):")
 out.append(f"  Cycle-to-date: {bcd_total:.0f} gal "
-           f"({billing.gal_to_cgl(bcd_total):.1f} CGL, in tier {tier_now}) - "
-           f"~${bcd_usage_cost:.2f} usage + ${SERVICE_CHARGE:.2f} service = ${bcd_usage_cost + SERVICE_CHARGE:.2f}")
+           f"({billing.gal_to_cgl(bcd_total):.1f} CGL, in tier {tier_now})")
+out.append(f"    Water usage ${bcd_usage_cost:.2f} + service ${SERVICE_CHARGE:.2f} = ${bcd_water_total:.2f}")
+out.append(f"    Surcharges  ${bcd_surcharges:.2f}  (Levelization ${LEVELIZATION_FLAT:.2f} "
+           f"+ RAC/PTR ${bcd_water_total * RACPTR_PCT:.2f} + LSL ${billing.gal_to_cgl(bcd_total) * LSL_RATE:.2f})")
+out.append(f"    Total so far: ${bcd_grand:.2f}")
 out.append("")
 if flags:
     out.append("Flags:")
